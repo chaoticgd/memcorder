@@ -40,3 +40,12 @@ add_library(memcorder
 	src/memcorder/util.h
 )
 target_include_directories(memcorder PUBLIC src)
+
+set(gtest_force_shared_crt on)
+add_subdirectory(thirdparty/googletest EXCLUDE_FROM_ALL)
+
+add_executable(tests
+	test/memcorder/recorder_tests.cpp
+)
+target_link_libraries(tests memcorder GTest::gtest_main)
+add_test(NAME tests COMMAND tests)
