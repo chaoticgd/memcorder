@@ -32,15 +32,37 @@ void memcorder_set_recording_stopped_function(
 	s_recording_stopped_user_data = user_data;
 }
 
+static void set_eflags_trap_bit(int trap)
+{
+	if (trap)
+	{
+		asm volatile(
+			"pushf\n"
+			"orl $0x100, (%rsp)\n"
+			"popf\n");
+	}
+	else
+	{
+		asm volatile(
+			"pushf\n"
+			"andl $0xfffffffffffffeff, (%rsp)\n"
+			"popf\n");
+	}
+}
+
 MemcorderStatus memcorder_start_recording()
 {
 	s_is_recording = 1;
+	
+	set_eflags_trap_bit(1);
 	
 	return MEMCORDER_SUCCESS;
 }
 
 MemcorderStatus memcorder_stop_recording()
 {
+	set_eflags_trap_bit(0);
+	
 	s_is_recording = 0;
 	
 	return MEMCORDER_SUCCESS;

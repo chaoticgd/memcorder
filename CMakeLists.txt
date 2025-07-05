@@ -34,6 +34,8 @@ add_library(memcorder
 	src/memcorder/channel.h
 	src/memcorder/event.c
 	src/memcorder/event.h
+	src/memcorder/memory_x86.c
+	src/memcorder/memory.h
 	src/memcorder/recorder.c
 	src/memcorder/recorder.h
 	src/memcorder/util.c
@@ -48,7 +50,8 @@ add_subdirectory(thirdparty/googletest EXCLUDE_FROM_ALL)
 add_subdirectory(thirdparty/zydis EXCLUDE_FROM_ALL)
 
 add_executable(tests
-	test/memcorder/recorder_tests.cpp
+	test/recorder_tests.cpp
+	test/x86_write_tests.cpp
 )
 target_link_libraries(tests memcorder GTest::gtest_main)
 add_test(NAME tests COMMAND tests)
