@@ -40,9 +40,12 @@ add_library(memcorder
 	src/memcorder/util.h
 )
 target_include_directories(memcorder PUBLIC src)
+target_link_libraries(memcorder Zydis)
 
 set(gtest_force_shared_crt on)
 add_subdirectory(thirdparty/googletest EXCLUDE_FROM_ALL)
+
+add_subdirectory(thirdparty/zydis EXCLUDE_FROM_ALL)
 
 add_executable(tests
 	test/memcorder/recorder_tests.cpp
