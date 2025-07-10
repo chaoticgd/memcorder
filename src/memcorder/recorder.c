@@ -38,15 +38,17 @@ static void set_eflags_trap_bit(int trap)
 	{
 		asm volatile(
 			"pushf\n"
-			"orl $0x100, (%rsp)\n"
-			"popf\n");
+			"orl $0x100, (%%rsp)\n"
+			"popf\n"
+			::: "memory");
 	}
 	else
 	{
 		asm volatile(
 			"pushf\n"
-			"andl $0xfffffffffffffeff, (%rsp)\n"
-			"popf\n");
+			"andl $0xfffffffffffffeff, (%%rsp)\n"
+			"popf\n"
+			::: "memory");
 	}
 }
 
