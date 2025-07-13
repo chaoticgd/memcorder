@@ -12,7 +12,7 @@
 extern "C" {
 #endif
 
-#define MEMCORDER_MAX_MEMORY_ACCESSES_PER_INSTRUCTION 10
+#define MEMCORDER_MAX_MEMORY_ACCESSES_PER_INSTRUCTION 20
 
 typedef enum {
 	MEMCORDER_MEMORY_ACCESS_TYPE_READ = 1 << 0,
@@ -45,7 +45,7 @@ typedef struct {
  */
 MemcorderStatus memcorder_enumerate_memory_accesses(
 	void* instruction,
-	void* platform_context,
+	const void* platform_context,
 	MemcorderMemoryAccessType types,
 	MemcorderMemoryAccess output_accesses[MEMCORDER_MAX_MEMORY_ACCESSES_PER_INSTRUCTION],
 	size_t* output_access_count);

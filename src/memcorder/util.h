@@ -4,6 +4,8 @@
 #ifndef MEMCORDER_UTIL_H
 #define MEMCORDER_UTIL_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,6 +39,14 @@ typedef enum {
 	 * Too many event types have been registered.
 	 */
 	MEMCORDER_TOO_MANY_EVENT_TYPES,
+	/**
+	 * The instruction could not be decoded.
+	 */
+	MEMCORDER_DECODER_FAILURE,
+	/**
+	 * Could not calculate address.
+	*/
+	MEMCORDER_ADDRESS_CALCULATION_FAILURE,
 } MemcorderStatus;
 
 const char* memcorder_status_string(MemcorderStatus status);

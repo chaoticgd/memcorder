@@ -3,9 +3,9 @@
 
 #include "memcorder/memory.h"
 
-#define VERBOSE_WRITE_TESTS 1
+#define VERBOSE_X86_WRITE_TESTS 1
 
-#if VERBOSE_WRITE_TESTS
+#ifdef VERBOSE_X86_WRITE_TESTS
 #include <Zydis/Decoder.h>
 #include <Zydis/Disassembler.h>
 #endif
@@ -22,13 +22,22 @@
 
 #define BUFFER_SIZE 64
 
+// The main buffer, which will be written to directly.
 static unsigned char s_buffer[BUFFER_SIZE];
+
+// The mirror buffer, which will be written to by our signal handler.
 static unsigned char s_mirror[BUFFER_SIZE];
 
 static MemcorderMemoryAccess s_accesses[MEMCORDER_MAX_MEMORY_ACCESSES_PER_INSTRUCTION];
 static size_t s_access_count = 0;
 
-static void handle_sigtrap(int sig, siginfo_t* info, void* ucontext)
+// Whether or not to treat 0xBBs being copied to the mirror buffer a failure.
+static bool s_relaxed = false;
+
+static void handle_sigtrap(
+	int sig,
+	siginfo_t* info,
+	void* ucontext)
 {
 	ucontext_t* context = reinterpret_cast<ucontext_t*>(ucontext);
 	void* rip = reinterpret_cast<void*>(context->uc_mcontext.gregs[REG_RIP]);
@@ -36,15 +45,17 @@ static void handle_sigtrap(int sig, siginfo_t* info, void* ucontext)
 	// Mirror writes made by the last instruction that was executed.
 	for (size_t i = 0; i < s_access_count; i++)
 	{
+		MemcorderMemoryAccess* access = &s_accesses[i];
+		
 		// We're only interested in writes to the main buffer.
-		size_t offset = static_cast<unsigned char*>(s_accesses[i].address) - s_buffer;
-		if (offset > BUFFER_SIZE || BUFFER_SIZE - offset < s_accesses[i].size)
+		size_t offset = static_cast<unsigned char*>(access->address) - s_buffer;
+		if (offset > BUFFER_SIZE || BUFFER_SIZE - offset < access->size)
 			continue;
 		
-		memcpy(s_mirror + offset, s_accesses[i].address, s_accesses[i].size);
+		memcpy(s_mirror + offset, access->address, access->size);
 	}
 	
-#ifdef VERBOSE_WRITE_TESTS
+#ifdef VERBOSE_X86_WRITE_TESTS
 	ZydisDecoder decoder;
 	ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
 	
@@ -52,7 +63,10 @@ static void handle_sigtrap(int sig, siginfo_t* info, void* ucontext)
 	ZyanStatus disassemble_status = ZydisDisassembleIntel(
 		ZYDIS_MACHINE_MODE_LONG_64, context->uc_mcontext.gregs[REG_RIP], rip, 15, &instruction);
 	if (!ZYAN_SUCCESS(disassemble_status))
+	{
+		fprintf(stderr, "ZydisDisassembleIntel failed\n");
 		abort();
+	}
 	for (size_t i = 0; i < instruction.info.length; i++)
 		fprintf(stderr, "%02hhx ", reinterpret_cast<char*>(rip)[i]);
 	if (instruction.info.length < 12)
@@ -65,21 +79,29 @@ static void handle_sigtrap(int sig, siginfo_t* info, void* ucontext)
 	MemcorderStatus enumerate_status = memcorder_enumerate_memory_accesses(
 		rip, ucontext, MEMCORDER_MEMORY_ACCESS_TYPE_WRITE, s_accesses, &s_access_count);
 	if (enumerate_status != MEMCORDER_SUCCESS)
+	{
+		fprintf(stderr, "memcorder_enumerate_memory_accesses: %s\n",
+			memcorder_status_string(enumerate_status));
 		abort();
+	}
 
-#ifdef VERBOSE_WRITE_TESTS
+#ifdef VERBOSE_X86_WRITE_TESTS
 	for (size_t i = 0; i < s_access_count; i++)
 	{
 		MemcorderMemoryAccess* access = &s_accesses[i];
-		fprintf(stderr, "\t%s %p %d\n",
+		long long offset = static_cast<unsigned char*>(access->address) - s_buffer;
+		
+		fprintf(stderr, "\t%s %p %d\t\t\t\t0x%llx\n",
 			(access->type == MEMCORDER_MEMORY_ACCESS_TYPE_READ) ? "read" : "write",
 			access->address,
-			access->size);
+			access->size,
+			offset);
 	}
 #endif
 }
 
-static void set_eflags_trap_bit(bool trap)
+static void set_eflags_trap_bit(
+	bool trap)
 {
 	if (trap)
 	{
@@ -101,14 +123,52 @@ static void set_eflags_trap_bit(bool trap)
 
 static bool compare_buffers()
 {
-	for (unsigned int i = 0; i < BUFFER_SIZE; i++)
-		if (s_buffer[i] != s_mirror[i] && (s_buffer[i] != 0xbb || s_mirror[i] != 0xdd))
-			return false;
+	bool result = true;
+	bool would_have_failed_if_strict = false;
 	
-	return true;
+	for (unsigned int i = 0; i < BUFFER_SIZE; i++)
+	{
+		if (s_buffer[i] == s_mirror[i])
+		{
+			if (s_mirror[i] == 0xbb)
+			{
+				// This may indicate that the wrong bytes were copied, or it
+				// could just be that the instruction being tested couldn't
+				// modify all the output bytes to be different to the input.
+				
+				if (s_relaxed)
+				{
+					would_have_failed_if_strict = true;
+					continue;
+				}
+				else
+				{
+					result = false;
+				}
+			}
+		}
+		else if (s_buffer[i] != 0xbb || s_mirror[i] != 0xdd)
+		{
+			result = false;
+		}
+		else
+		{
+			// Neither buffers have been modified.
+		}
+	}
+	
+	// If the s_relaxed test flag wasn't required for the test to pass, it
+	// should've been made a strict test instead. That means there's something
+	// going on that should be investigated.
+	EXPECT_TRUE(!s_relaxed || would_have_failed_if_strict);
+	
+	return result;
 }
 
-static void print_diff_row(unsigned char* buffer, unsigned char* other, unsigned int offset)
+static void print_diff_row(
+	unsigned char* buffer,
+	unsigned char* other,
+	unsigned int offset)
 {
 	for (unsigned int i = 0; i < 0x10; i++)
 	{
@@ -119,10 +179,13 @@ static void print_diff_row(unsigned char* buffer, unsigned char* other, unsigned
 			fprintf(stderr, " ");
 		
 		const char* colour;
-		if (buffer[offset + i] == other[offset + i])
-			colour = "32"; // green
-		else if (s_buffer[offset + i] == 0xbb && s_mirror[offset + i] == 0xdd)
-			colour = "38"; // gray
+		if (s_buffer[offset + i] == 0xbb && s_mirror[offset + i] == 0xdd)
+			colour = "30"; // gray
+		else if (buffer[offset + i] == other[offset + i])
+			if (s_mirror[offset + i] != 0xbb)
+				colour = "32"; // green
+			else
+				colour = "33"; // yellow
 		else
 			colour = "31"; // red
 		
@@ -132,8 +195,6 @@ static void print_diff_row(unsigned char* buffer, unsigned char* other, unsigned
 
 static void print_diff()
 {
-	fprintf(stderr, "****\n");
-	fprintf(stderr, "Difference detected between mirror (left) and expected buffer (right):\n");
 	fprintf(stderr, "         "
 		"   0  1  2  3   4  5  6  7   8  9  a  b   c  d  e  f  |"
 		"   0  1  2  3   4  5  6  7   8  9  a  b   c  d  e  f\n");
@@ -146,8 +207,6 @@ static void print_diff()
 		print_diff_row(s_mirror, s_buffer, i);
 		fprintf(stderr, "\n");
 	}
-	
-	fprintf(stderr, "****\n");
 }
 
 // Some variables to use as input operands.
@@ -155,7 +214,8 @@ static int zero;
 static int one;
 static int two;
 
-static void run_test(void (*run_test_body)())
+static void run_test(
+	void (*run_test_body)())
 {
 	// Fill the buffers so that we can compare them later. We fill them with
 	// different values so that we can detect when bytes are copied between
@@ -199,55 +259,132 @@ static void run_test(void (*run_test_body)())
 	
 	// Compare the contents of the buffers, ignoring the special pattern they
 	// were filled with initially.
-	bool equal = compare_buffers();
+	const bool equal = compare_buffers();
 	
 	// If the comparison above failed, that means the memory isn't being
 	// mirrored correctly, so print out a diff so we can see what went wrong.
-#ifdef VERBOSE_WRITE_TESTS
-	print_diff();
+#ifdef VERBOSE_X86_WRITE_TESTS
+	const bool print = true;
 #else
-	if (!equal)
-		print_diff();
+	const bool print = !equal;
 #endif
 	
-	ASSERT_TRUE(equal);
+	if (print)
+	{
+		fprintf(stderr, "****\n");
+		if (!equal)
+			fprintf(stderr, "Difference detected between main buffer (left) and mirror buffer (right):\n");
+		print_diff();
+		fprintf(stderr, "****\n");
+	}
+	
+	EXPECT_TRUE(equal);
 }
 
-#define X86_WT(name) \
+// Strict write test. This variant will fail if the mirror buffer contains any
+// 0xBBs (which could possibly mean that the wrong bytes were copied).
+#define X86_WTS(name) \
 	static void run_test_body_##name(); \
 	TEST(X86Write, name) \
 	{ \
+		s_relaxed = false; \
 		run_test(run_test_body_##name); \
 	} \
 	static void run_test_body_##name()
+
+// Relaxed write test. Only use this if it is infeasible to use X86_WTS (e.g.
+// because the instruction being tested has operands that aren't large enough to
+// affect the most significant byte of the output).
+#define X86_WTR(name) \
+	static void run_test_body_##name(); \
+	TEST(X86Write, name) \
+	{ \
+		s_relaxed = true; \
+		run_test(run_test_body_##name); \
+	} \
+	static void run_test_body_##name()
+
+#define ASMV asm volatile
 
 // *****************************************************************************
 // Instructions (A-L)
 // *****************************************************************************
 
-X86_WT(ADC_Imm8ToMem8) { asm volatile("adcb $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADC_Imm8ToMem16) { asm volatile("adcw $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADC_Imm8ToMem32) { asm volatile("adcl $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADC_Imm8ToMem64) { asm volatile("adcq $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADC_Imm16ToMem16) { asm volatile("adcw $1234, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADC_Imm32ToMem32) { asm volatile("adcl $123456, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADC_Imm32ToMem64) { asm volatile("adcq $123456, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADC_Reg8ToMem8) { asm volatile("movb $123, %%al\n adcb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
-X86_WT(ADC_Reg16ToMem16) { asm volatile("movw $123, %%ax\n adcw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
-X86_WT(ADC_Reg32ToMem32) { asm volatile("movl $123, %%eax\n adcl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
-X86_WT(ADC_Reg64ToMem64) { asm volatile("movq $123, %%rax\n adcq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
+X86_WTS(ADC_Imm8ToMem8) { ASMV("adcb $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADC_Imm8ToMem16) { ASMV("adcw $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADC_Imm8ToMem32) { ASMV("adcl $123, (%0)" :: "r" (s_buffer) : "memory"); }
 
-X86_WT(ADD_Imm8ToMem8) { asm volatile("addb $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADD_Imm8ToMem16) { asm volatile("addw $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADD_Imm8ToMem32) { asm volatile("addl $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADD_Imm8ToMem64) { asm volatile("addq $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADD_Imm16ToMem16) { asm volatile("addw $1234, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADD_Imm32ToMem32) { asm volatile("addl $123456, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADD_Imm32ToMem64) { asm volatile("addq $123456, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WT(ADD_Reg8ToMem8) { asm volatile("movb $123, %%al\n addb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
-X86_WT(ADD_Reg16ToMem16) { asm volatile("movw $123, %%ax\n addw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
-X86_WT(ADD_Reg32ToMem32) { asm volatile("movl $123, %%eax\n addl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
-X86_WT(ADD_Reg64ToMem64) { asm volatile("movq $123, %%rax\n addq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
+X86_WTR(ADC_Imm8ToMem64) { ASMV("adcq $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADC_Imm16ToMem16) { ASMV("adcw $12345, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADC_Imm32ToMem32) { ASMV("adcl $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADC_Imm32ToMem64) { ASMV("adcq $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADC_Reg8ToMem8) { ASMV("movb $123, %%al\n adcb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
+X86_WTS(ADC_Reg16ToMem16) { ASMV("movw $12345, %%ax\n adcw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
+X86_WTS(ADC_Reg32ToMem32) { ASMV("movl $1234567890, %%eax\n adcl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
+X86_WTS(ADC_Reg64ToMem64) { ASMV("movq $12345678901234567890, %%rax\n adcq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
 
+X86_WTS(ADD_Imm8ToMem8) { ASMV("addb $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADD_Imm8ToMem16) { ASMV("addw $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADD_Imm8ToMem32) { ASMV("addl $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADD_Imm8ToMem64) { ASMV("addq $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADD_Imm16ToMem16) { ASMV("addw $12345, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADD_Imm32ToMem32) { ASMV("addl $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADD_Imm32ToMem64) { ASMV("addq $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADD_Reg8ToMem8) { ASMV("movb $123, %%al\n addb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
+X86_WTS(ADD_Reg16ToMem16) { ASMV("movw $12345, %%ax\n addw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
+X86_WTS(ADD_Reg32ToMem32) { ASMV("movl $1234567890, %%eax\n addl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
+X86_WTS(ADD_Reg64ToMem64) { ASMV("movq $12345678901234567890, %%rax\n addq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
+
+X86_WTS(AND_Imm8ToMem8) { ASMV("andb $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm8ToMem16) { ASMV("andw $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm8ToMem32) { ASMV("andl $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm8ToMem64) { ASMV("andq $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm16ToMem16) { ASMV("andw $1234, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm32ToMem32) { ASMV("andl $123456, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm32ToMem64) { ASMV("andq $123456, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Reg8ToMem8) { ASMV("movb $123, %%al\n andb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
+X86_WTS(AND_Reg16ToMem16) { ASMV("movw $123, %%ax\n andw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
+X86_WTS(AND_Reg32ToMem32) { ASMV("movl $123, %%eax\n andl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
+X86_WTS(AND_Reg64ToMem64) { ASMV("movq $123, %%rax\n andq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
+
+#define X86_WTS_BTC_SMALL(name, bit_offset) \
+	X86_WTS(BTC_##name##_Reg16ToMem16) \
+		{ ASMV("movw $" #bit_offset ", %%ax\n btcw %%ax, (%0)" :: "r" (s_buffer + 32) : "ax", "memory"); } \
+	X86_WTS(BTC_##name##_Reg32ToMem32) \
+		{ ASMV("movl $" #bit_offset ", %%eax\n btcl %%eax, (%0)" :: "r" (s_buffer + 32) : "eax", "memory"); } \
+	X86_WTS(BTC_##name##_Reg64ToMem64) \
+		{ ASMV("movq $" #bit_offset ", %%rax\n btcq %%rax, (%0)" :: "r" (s_buffer + 32) : "rax", "memory"); } \
+	X86_WTS(BTC_##name##_Imm8ToMem16) \
+		{ ASMV("btcw $" #bit_offset ", (%0)" :: "r" (s_buffer + 32) : "memory"); } \
+	X86_WTS(BTC_##name##_Imm8ToMem32) \
+		{ ASMV("btcl $" #bit_offset ", (%0)" :: "r" (s_buffer + 32) : "memory"); } \
+	X86_WTS(BTC_##name##_Imm8ToMem64) \
+		{ ASMV("btcq $" #bit_offset ", (%0)" :: "r" (s_buffer + 32) : "memory"); }
+X86_WTS_BTC_SMALL(Zero, 0)
+X86_WTS_BTC_SMALL(Positive4, 4)
+X86_WTS_BTC_SMALL(Positive64, 64)
+X86_WTS_BTC_SMALL(Positive123, 123)
+X86_WTS_BTC_SMALL(Positive127, 127)
+X86_WTS_BTC_SMALL(Negative4, -4)
+X86_WTS_BTC_SMALL(Negative64, -64)
+X86_WTS_BTC_SMALL(Negative123, -123)
+X86_WTS_BTC_SMALL(Negative128, -128)
+#define X86_WTS_BTC_LARGE64(name, bit_offset) \
+	X86_WTS(BTC_##name##_Reg64ToMem64) \
+		{ ASMV("movq $" #bit_offset ", %%rax\n btcq %%rax, (%0)" \
+			:: "r" ((s_buffer + 32) - (bit_offset / 8)) : "rax", "memory"); }
+#define X86_WTS_BTC_LARGE32(name, bit_offset) \
+	X86_WTS(BTC_##name##_Reg32ToMem32) \
+		{ ASMV("movl $" #bit_offset ", %%eax\n btcl %%eax, (%0)" \
+			:: "r" ((s_buffer + 32) - (bit_offset / 8)) : "eax", "memory"); } \
+		X86_WTS_BTC_LARGE64(name, bit_offset)
+#define X86_WTS_BTC_LARGE16(name, bit_offset) \
+	X86_WTS(BTC_##name##_Reg16ToMem16) \
+		{ ASMV("movw $" #bit_offset ", %%ax\n btcw %%ax, (%0)" \
+			:: "r" ((s_buffer + 32) - (bit_offset / 8)) : "ax", "memory"); } \
+		X86_WTS_BTC_LARGE32(name, bit_offset)
+X86_WTS_BTC_LARGE16(MaxSigned16, 32767);
+X86_WTS_BTC_LARGE32(MaxSigned32, 2147483647);
+// TODO: Test some more out of range values here. Minimums don't work right.
 
 #endif

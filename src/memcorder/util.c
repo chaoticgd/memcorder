@@ -19,6 +19,10 @@ const char* memcorder_status_string(MemcorderStatus status)
 			return "Too many channels have been registered.";
 		case MEMCORDER_TOO_MANY_EVENT_TYPES:
 			return "Too many event types have been registered.";
+		case MEMCORDER_DECODER_FAILURE:
+			return "The instrction could not be decoded.";
+		case MEMCORDER_ADDRESS_CALCULATION_FAILURE:
+			return "Could not calculate address.";
 	}
 	
 	return "Invalid status code.";
