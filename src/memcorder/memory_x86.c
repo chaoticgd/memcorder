@@ -11,7 +11,7 @@
 #include <sys/ucontext.h>
 #include <immintrin.h>
 
-static MemcorderStatus handle_special_cases(
+static MemcorderStatus handle_special_instructions(
 	const ZydisDecodedInstruction* instruction,
 	const ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT],
 	uint64_t runtime_address,
@@ -24,6 +24,13 @@ static MemcorderStatus calculate_operand_value(
 	const ZydisDecodedOperand* operand,
 	uint64_t runtime_address,
 	const void* platform_context,
+	uint64_t* result);
+static MemcorderStatus calculate_memory_operand_value(
+	const ZydisDecodedInstruction* instruction,
+	const ZydisDecodedOperand* operand,
+	uint64_t runtime_address,
+	const void* platform_context,
+	size_t element_count,
 	uint64_t* result);
 static MemcorderStatus calculate_memory_operand_address(
 	const ZydisDecodedInstruction* instruction,
@@ -59,7 +66,7 @@ MemcorderStatus memcorder_enumerate_memory_accesses(
 		instruction, 15, &decoded_instruction, decoded_operands)))
 		return MEMCORDER_DECODER_FAILURE;
 	
-	MemcorderStatus special_cases_status = handle_special_cases(
+	MemcorderStatus special_cases_status = handle_special_instructions(
 		&decoded_instruction,
 		decoded_operands,
 		(uint64_t) instruction,
@@ -108,7 +115,7 @@ MemcorderStatus memcorder_enumerate_memory_accesses(
 	return MEMCORDER_SUCCESS;
 }
 
-static MemcorderStatus handle_special_cases(
+static MemcorderStatus handle_special_instructions(
 	const ZydisDecodedInstruction* instruction,
 	const ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT],
 	uint64_t runtime_address,
@@ -216,12 +223,66 @@ static MemcorderStatus handle_special_cases(
 			rax = truncate_to_size(rax, source_dest_operand->size);
 			
 			uint64_t value;
-			MemcorderStatus status = calculate_operand_value(
-				instruction, source_dest_operand, runtime_address, platform_context, &value);
+			MemcorderStatus status = calculate_memory_operand_value(
+				instruction, source_dest_operand, runtime_address, platform_context, 1, &value);
 			if (status != MEMCORDER_SUCCESS)
 				return status;
 			
 			if (value == rax)
+				return -1;
+			
+			break;
+		}
+		case ZYDIS_MNEMONIC_CMPXCHG8B:
+		{
+			assert(instruction->operand_count >= 1);
+			const ZydisDecodedOperand* source_dest_operand = &operands[0];
+			
+			if (source_dest_operand->type != ZYDIS_OPERAND_TYPE_MEMORY)
+				break;
+			
+			uint64_t edx;
+			if (!get_integer_register(ZYDIS_REGISTER_EDX, platform_context, &edx))
+				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+			
+			uint64_t eax;
+			if (!get_integer_register(ZYDIS_REGISTER_EAX, platform_context, &eax))
+				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+			
+			uint64_t value;
+			MemcorderStatus status = calculate_memory_operand_value(
+				instruction, source_dest_operand, runtime_address, platform_context, 1, &value);
+			if (status != MEMCORDER_SUCCESS)
+				return status;
+			
+			if ((value & 0xffffffff) == edx && (value >> 32) == eax)
+				return -1;
+			
+			break;
+		}
+		case ZYDIS_MNEMONIC_CMPXCHG16B:
+		{
+			assert(instruction->operand_count >= 1);
+			const ZydisDecodedOperand* source_dest_operand = &operands[0];
+			
+			if (source_dest_operand->type != ZYDIS_OPERAND_TYPE_MEMORY)
+				break;
+			
+			uint64_t rdx;
+			if (!get_integer_register(ZYDIS_REGISTER_RDX, platform_context, &rdx))
+				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+			
+			uint64_t rax;
+			if (!get_integer_register(ZYDIS_REGISTER_RAX, platform_context, &rax))
+				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+			
+			uint64_t value[2];
+			MemcorderStatus status = calculate_memory_operand_value(
+				instruction, source_dest_operand, runtime_address, platform_context, 2, value);
+			if (status != MEMCORDER_SUCCESS)
+				return status;
+			
+			if (value[0] == rdx && value[1] == rax)
 				return -1;
 			
 			break;
@@ -257,20 +318,15 @@ static MemcorderStatus calculate_operand_value(
 		}
 		case ZYDIS_OPERAND_TYPE_MEMORY:
 		{
-			uint64_t address;
-			MemcorderStatus status = calculate_memory_operand_address(
-				instruction, operand, runtime_address, platform_context, &address);
+			MemcorderStatus status = calculate_memory_operand_value(
+				instruction,
+				operand,
+				runtime_address,
+				platform_context,
+				1,
+				result);
 			if (status != MEMCORDER_SUCCESS)
 				return status;
-			
-			switch (operand->size)
-			{
-				case 8: *result = *(uint8_t*) address; break;
-				case 16: *result = *(uint16_t*) address; break;
-				case 32: *result = *(uint32_t*) address; break;
-				case 64: *result = *(uint64_t*) address; break;
-				default: return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
-			}
 			
 			break;
 		}
@@ -278,6 +334,45 @@ static MemcorderStatus calculate_operand_value(
 		{
 			return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
 		}
+	}
+	
+	return MEMCORDER_SUCCESS;
+}
+
+static MemcorderStatus calculate_memory_operand_value(
+	const ZydisDecodedInstruction* instruction,
+	const ZydisDecodedOperand* operand,
+	uint64_t runtime_address,
+	const void* platform_context,
+	size_t element_count,
+	uint64_t* result)
+{
+	uint64_t address;
+	MemcorderStatus status = calculate_memory_operand_address(
+		instruction, operand, runtime_address, platform_context, &address);
+	if (status != MEMCORDER_SUCCESS)
+		return status;
+	
+	switch (operand->size)
+	{
+		case 8:
+			for (size_t i = 0; i < element_count; i++)
+				((uint64_t*) result)[i] = ((uint8_t*) address)[i];
+			break;
+		case 16:
+			for (size_t i = 0; i < element_count; i++)
+				((uint64_t*) result)[i] = ((uint16_t*) address)[i];
+			break;
+		case 32:
+			for (size_t i = 0; i < element_count; i++)
+				((uint64_t*) result)[i] = ((uint32_t*) address)[i];
+			break;
+		case 64:
+		case 128:
+			for (size_t i = 0; i < element_count; i++)
+				((uint64_t*) result)[i] = ((uint64_t*) address)[i];
+			break;
+		default: return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
 	}
 	
 	return MEMCORDER_SUCCESS;

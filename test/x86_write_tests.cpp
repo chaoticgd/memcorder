@@ -391,21 +391,38 @@ X86_WTS_BTC_LARGE32(MaxSigned32, 2147483647);
 
 // NOTE: Assume BTR and BTS behave similarly.
 
-X86_WTS(CMPXCHG_Exchange8) { ASMV("movb $0xbb, %%al\n movb $123, %%bl\n cmpxchgb %%bl, (%0)"
-	:: "r" (s_buffer) : "al", "bl", "memory"); }
-X86_WTS(CMPXCHG_Exchange16) { ASMV("movw $0xbbbb, %%ax\n movw $123, %%bx\n cmpxchgw %%bx, (%0)"
-	:: "r" (s_buffer) : "ax", "bx", "memory"); }
-X86_WTS(CMPXCHG_Exchange32) { ASMV("movl $0xbbbbbbbb, %%eax\n movl $123, %%ebx\n cmpxchgl %%ebx, (%0)"
-	:: "r" (s_buffer) : "eax", "ebx", "memory"); }
-X86_WTS(CMPXCHG_Exchange64) { ASMV("movq $0xbbbbbbbbbbbbbbbb, %%rax\n movq $123, %%rbx\n cmpxchgq %%rbx, (%0)"
-	:: "r" (s_buffer) : "rax", "rbx", "memory"); }
-X86_WTS(CMPXCHG_DontExchange8) { ASMV("movb $123, %%al\n movb $123, %%bl\n cmpxchgb %%bl, (%0)"
-	:: "r" (s_buffer) : "al", "bl", "memory"); }
-X86_WTS(CMPXCHG_DontExchange16) { ASMV("movw $123, %%ax\n movw $123, %%bx\n cmpxchgw %%bx, (%0)"
-	:: "r" (s_buffer) : "ax", "bx", "memory"); }
-X86_WTS(CMPXCHG_DontExchange32) { ASMV("movl $123, %%eax\n movl $123, %%ebx\n cmpxchgl %%ebx, (%0)"
-	:: "r" (s_buffer) : "eax", "ebx", "memory"); }
-X86_WTS(CMPXCHG_DontExchange64) { ASMV("movq $123, %%rax\n movq $123, %%rbx\n cmpxchgq %%rbx, (%0)"
-	:: "r" (s_buffer) : "rax", "rbx", "memory"); }
+X86_WTS(CMPXCHG_Exchange8) { ASMV("movb $0xbb, %%al\n movb $123, %%bl\n cmpxchgb %%bl, %0"
+	: "+m" (s_buffer) :: "al", "bl", "memory"); }
+X86_WTS(CMPXCHG_Exchange16) { ASMV("movw $0xbbbb, %%ax\n movw $123, %%bx\n cmpxchgw %%bx, %0"
+	: "+m" (s_buffer) :: "ax", "bx", "memory"); }
+X86_WTS(CMPXCHG_Exchange32) { ASMV("movl $0xbbbbbbbb, %%eax\n movl $123, %%ebx\n cmpxchgl %%ebx, %0"
+	: "+m" (s_buffer) :: "eax", "ebx", "memory"); }
+X86_WTS(CMPXCHG_Exchange64) { ASMV("movq $0xbbbbbbbbbbbbbbbb, %%rax\n movq $123, %%rbx\n cmpxchgq %%rbx, %0"
+	: "+m" (s_buffer) :: "rax", "rbx", "memory"); }
+X86_WTS(CMPXCHG_DontExchange8) { ASMV("movb $123, %%al\n movb $123, %%bl\n cmpxchgb %%bl, %0"
+	: "+m" (s_buffer) :: "al", "bl", "memory"); }
+X86_WTS(CMPXCHG_DontExchange16) { ASMV("movw $123, %%ax\n movw $123, %%bx\n cmpxchgw %%bx, %0"
+	: "+m" (s_buffer) :: "ax", "bx", "memory"); }
+X86_WTS(CMPXCHG_DontExchange32) { ASMV("movl $123, %%eax\n movl $123, %%ebx\n cmpxchgl %%ebx, %0"
+	: "+m" (s_buffer) :: "eax", "ebx", "memory"); }
+X86_WTS(CMPXCHG_DontExchange64) { ASMV("movq $123, %%rax\n movq $123, %%rbx\n cmpxchgq %%rbx, %0"
+	: "+m" (s_buffer) :: "rax", "rbx", "memory"); }
+
+X86_WTS(CMPXCHG8B_Exchange)
+	{ ASMV("movl $0xbbbbbbbb, %%edx\n movl $0xbbbbbbbb, %%eax\n\n"
+		"movl $123, %%ecx\n movl $123, %%ebx\n"
+		"cmpxchg8b %0" : "+m" (s_buffer) :: "eax", "ebx", "ecx", "edx", "memory"); }
+X86_WTS(CMPXCHG8B_DontExchange)
+	{ ASMV("movl $123, %%edx\n movl $123, %%eax\n\n"
+		"movl $123, %%ecx\n movl $123, %%ebx\n"
+		"cmpxchg8b %0" : "+m" (s_buffer) :: "eax", "ebx", "ecx", "edx", "memory"); }
+X86_WTS(CMPXCHG16B_Exchange)
+	{ ASMV("movq $0xbbbbbbbbbbbbbbbb, %%rdx\n movq $0xbbbbbbbbbbbbbbbb, %%rax\n"
+		"movq $123, %%rcx\n movq $123, %%rbx\n"
+		"cmpxchg16b %0" : "+m" (s_buffer) :: "rax", "rbx", "rcx", "rdx", "memory"); }
+X86_WTS(CMPXCHG16B_DontExchange)
+	{ ASMV("movq $123, %%rdx\n movq $123, %%rax\n"
+		"movq $123, %%rcx\n movq $123, %%rbx\n"
+		"cmpxchg16b %0" : "+m" (s_buffer) :: "rax", "rbx", "rcx", "rdx", "memory"); }
 
 #endif
