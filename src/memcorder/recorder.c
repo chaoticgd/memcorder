@@ -40,6 +40,9 @@ static void set_eflags_trap_bit(int trap)
 			"pushf\n"
 			"orl $0x100, (%%rsp)\n"
 			"popf\n"
+			"nop\n"
+			"nop\n"
+			"nop\n"
 			::: "memory");
 	}
 	else

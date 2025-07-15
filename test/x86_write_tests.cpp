@@ -91,8 +91,7 @@ static void handle_sigtrap(
 		MemcorderMemoryAccess* access = &s_accesses[i];
 		long long offset = static_cast<unsigned char*>(access->address) - s_buffer;
 		
-		fprintf(stderr, "\t%s %p %d\t\t\t\t0x%llx\n",
-			(access->type == MEMCORDER_MEMORY_ACCESS_TYPE_READ) ? "read" : "write",
+		fprintf(stderr, "\twrite %p %d\t\t\t\t0x%llx\n",
 			access->address,
 			access->size,
 			offset);
@@ -109,6 +108,9 @@ static void set_eflags_trap_bit(
 			"pushf\n"
 			"orl $0x100, (%%rsp)\n"
 			"popf\n"
+			"nop\n"
+			"nop\n"
+			"nop\n"
 			::: "memory");
 	}
 	else

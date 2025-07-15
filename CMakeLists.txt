@@ -51,6 +51,7 @@ add_subdirectory(thirdparty/zydis EXCLUDE_FROM_ALL)
 
 add_executable(tests
 	test/recorder_tests.cpp
+	test/x86_read_tests.cpp
 	test/x86_write_tests.cpp
 )
 target_link_libraries(tests memcorder GTest::gtest_main)
