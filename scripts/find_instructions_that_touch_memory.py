@@ -41,7 +41,7 @@ operand_type_accesses_memory = {
 	'ptr': True, # pointer
 	'rel': False, # rip relative value
 	'sreg': False, # segment register
-	'tmm': False,
+	'tmm': False, # simd amx
 	'xmm': False, # simd
 	'ymm': False, # simd avx2
 	'zmm': False # simd avx512
@@ -58,7 +58,8 @@ for instruction in instructions:
 				'read' in operand['action'] and
 				operand_type_accesses_memory[operand['operand_type']]
 			):
-				instructions_that_read.append(instruction['mnemonic'] + ' ' + instruction['opcode'])
+				instructions_that_read.append(
+					instruction['mnemonic'] + ' ' + instruction['opcode'] + ' ' + instruction['meta_info']['extension'])
 				break
 		for operand in instruction['operands']:
 			if (
@@ -66,7 +67,8 @@ for instruction in instructions:
 				'write' in operand['action'] and
 				operand_type_accesses_memory[operand['operand_type']]
 			):
-				instructions_that_write.append(instruction['mnemonic'] + ' ' + instruction['opcode'])
+				instructions_that_write.append(
+					instruction['mnemonic'] + ' ' + instruction['opcode'] + ' ' + instruction['meta_info']['extension'])
 				break
 
 instructions_that_read = sorted(set(instructions_that_read))
