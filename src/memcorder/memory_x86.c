@@ -14,23 +14,28 @@
 static MemcorderStatus handle_special_cases(
 	const ZydisDecodedInstruction* instruction,
 	const ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT],
-	ZyanU64 runtime_address,
+	uint64_t runtime_address,
 	const void* platform_context,
 	MemcorderMemoryAccessType types,
 	MemcorderMemoryAccess output_accesses[MEMCORDER_MAX_MEMORY_ACCESSES_PER_INSTRUCTION],
 	size_t* output_access_count);
-
 static MemcorderStatus calculate_operand_value(
 	const ZydisDecodedInstruction* instruction,
 	const ZydisDecodedOperand* operand,
-	ZyanU64 runtime_address,
+	uint64_t runtime_address,
 	const void* platform_context,
-	ZyanU64* result);
-
+	uint64_t* result);
+static MemcorderStatus calculate_memory_operand_address(
+	const ZydisDecodedInstruction* instruction,
+	const ZydisDecodedOperand* operand,
+	uint64_t runtime_address,
+	const void* platform_context,
+	uint64_t* result);
 static int64_t to_signed(uint64_t value, int size);
-
-static ZyanBool get_integer_register(ZydisRegister reg, ucontext_t* context, ZyanU64* result);
-
+static uint64_t truncate_to_size(
+	uint64_t value,
+	int size);
+static ZyanBool get_integer_register(ZydisRegister reg, const void* platform_context, uint64_t* result);
 static void linux_context_to_zydis_context(
 	const ucontext_t* source,
 	ZydisRegisterContext* destination);
@@ -57,7 +62,7 @@ MemcorderStatus memcorder_enumerate_memory_accesses(
 	MemcorderStatus special_cases_status = handle_special_cases(
 		&decoded_instruction,
 		decoded_operands,
-		(ZyanU64) instruction,
+		(uint64_t) instruction,
 		platform_context,
 		types,
 		output_accesses,
@@ -77,8 +82,8 @@ MemcorderStatus memcorder_enumerate_memory_accesses(
 		{
 			MemcorderMemoryAccess* access = &output_accesses[(*output_access_count)++];
 			access->address = 0;
-			if (calculate_operand_value(
-				&decoded_instruction, operand, (ZyanU64) instruction, platform_context, (ZyanU64*) &access->address)
+			if (calculate_memory_operand_address(
+				&decoded_instruction, operand, (uint64_t) instruction, platform_context, (uint64_t*) &access->address)
 				!= MEMCORDER_SUCCESS)
 				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
 			access->size = operand->size / 8;
@@ -91,8 +96,8 @@ MemcorderStatus memcorder_enumerate_memory_accesses(
 		{
 			MemcorderMemoryAccess* access = &output_accesses[(*output_access_count)++];
 			access->address = 0;
-			if (calculate_operand_value(
-				&decoded_instruction, operand, (ZyanU64) instruction, platform_context, (ZyanU64*) &access->address)
+			if (calculate_memory_operand_address(
+				&decoded_instruction, operand, (uint64_t) instruction, platform_context, (uint64_t*) &access->address)
 				!= MEMCORDER_SUCCESS)
 				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
 			access->size = operand->size / 8;
@@ -106,7 +111,7 @@ MemcorderStatus memcorder_enumerate_memory_accesses(
 static MemcorderStatus handle_special_cases(
 	const ZydisDecodedInstruction* instruction,
 	const ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT],
-	ZyanU64 runtime_address,
+	uint64_t runtime_address,
 	const void* platform_context,
 	MemcorderMemoryAccessType types,
 	MemcorderMemoryAccess output_accesses[MEMCORDER_MAX_MEMORY_ACCESSES_PER_INSTRUCTION],
@@ -122,17 +127,16 @@ static MemcorderStatus handle_special_cases(
 			const ZydisDecodedOperand* bit_base_operand = &operands[0];
 			const ZydisDecodedOperand* bit_offset_operand = &operands[1];
 			
-			// We only care about the variants that access memory.
 			if (bit_base_operand->type != ZYDIS_OPERAND_TYPE_MEMORY)
 				break;
 			
-			ZyanU64 bit_base;
-			if (calculate_operand_value(
+			uint64_t bit_base;
+			if (calculate_memory_operand_address(
 				instruction, bit_base_operand, runtime_address, platform_context, &bit_base)
 				!= MEMCORDER_SUCCESS)
 				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
 			
-			ZyanU64 bit_offset_unsigned;
+			uint64_t bit_offset_unsigned;
 			if (calculate_operand_value(
 				instruction, bit_offset_operand, runtime_address, platform_context, &bit_offset_unsigned)
 				!= MEMCORDER_SUCCESS)
@@ -195,28 +199,54 @@ static MemcorderStatus handle_special_cases(
 				access->type = MEMCORDER_MEMORY_ACCESS_TYPE_WRITE;
 			}
 			
-			return MEMCORDER_SUCCESS;
+			break;
+		}
+		case ZYDIS_MNEMONIC_CMPXCHG:
+		{
+			assert(instruction->operand_count >= 2);
+			const ZydisDecodedOperand* source_dest_operand = &operands[0];
+			
+			if (source_dest_operand->type != ZYDIS_OPERAND_TYPE_MEMORY)
+				break;
+			
+			uint64_t rax;
+			if (!get_integer_register(ZYDIS_REGISTER_RAX, platform_context, &rax))
+				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+			
+			rax = truncate_to_size(rax, source_dest_operand->size);
+			
+			uint64_t value;
+			MemcorderStatus status = calculate_operand_value(
+				instruction, source_dest_operand, runtime_address, platform_context, &value);
+			if (status != MEMCORDER_SUCCESS)
+				return status;
+			
+			if (value == rax)
+				return -1;
+			
+			break;
 		}
 		default:
 		{
+			return -1;
 		}
 	}
 	
-	return -1;
+	return MEMCORDER_SUCCESS;
 }
 
 static MemcorderStatus calculate_operand_value(
 	const ZydisDecodedInstruction* instruction,
 	const ZydisDecodedOperand* operand,
-	ZyanU64 runtime_address,
+	uint64_t runtime_address,
 	const void* platform_context,
-	ZyanU64* result)
+	uint64_t* result)
 {
 	switch (operand->type)
 	{
 		case ZYDIS_OPERAND_TYPE_REGISTER:
 		{
-			if (!get_integer_register(operand->reg.value, (ucontext_t*) platform_context, result))
+			if (!get_integer_register(operand->reg.value, platform_context, result))
 				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
 			break;
 		}
@@ -225,21 +255,57 @@ static MemcorderStatus calculate_operand_value(
 			*result = operand->imm.value.u;
 			break;
 		}
+		case ZYDIS_OPERAND_TYPE_MEMORY:
+		{
+			uint64_t address;
+			MemcorderStatus status = calculate_memory_operand_address(
+				instruction, operand, runtime_address, platform_context, &address);
+			if (status != MEMCORDER_SUCCESS)
+				return status;
+			
+			switch (operand->size)
+			{
+				case 8: *result = *(uint8_t*) address; break;
+				case 16: *result = *(uint16_t*) address; break;
+				case 32: *result = *(uint32_t*) address; break;
+				case 64: *result = *(uint64_t*) address; break;
+				default: return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+			}
+			
+			break;
+		}
 		default:
 		{
-			ZydisRegisterContext context = {};
-			linux_context_to_zydis_context((const ucontext_t*) platform_context, &context);
-			if (!ZYAN_SUCCESS(ZydisCalcAbsoluteAddressEx(
-				instruction, operand, runtime_address, &context, result)))
-				return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+			return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
 		}
 	}
 	
 	return MEMCORDER_SUCCESS;
 }
 
-static ZyanBool get_integer_register(ZydisRegister reg, ucontext_t* context, ZyanU64* result)
+static MemcorderStatus calculate_memory_operand_address(
+	const ZydisDecodedInstruction* instruction,
+	const ZydisDecodedOperand* operand,
+	uint64_t runtime_address,
+	const void* platform_context,
+	uint64_t* result)
 {
+	assert(operand->type == ZYDIS_OPERAND_TYPE_MEMORY);
+	
+	ZydisRegisterContext context = {};
+	linux_context_to_zydis_context((const ucontext_t*) platform_context, &context);
+	
+	if (!ZYAN_SUCCESS(ZydisCalcAbsoluteAddressEx(
+		instruction, operand, (ZyanU64) runtime_address, &context, (ZyanU64*) result)))
+		return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+	
+	return MEMCORDER_SUCCESS;
+}
+
+static ZyanBool get_integer_register(ZydisRegister reg, const void* platform_context, uint64_t* result)
+{
+	const ucontext_t* context = (const ucontext_t*) platform_context;
+	
 	switch (reg)
 	{
 		case ZYDIS_REGISTER_AL: *result = context->uc_mcontext.gregs[REG_RAX] & 0xff; break;
@@ -323,7 +389,9 @@ static ZyanBool get_integer_register(ZydisRegister reg, ucontext_t* context, Zya
 	return ZYAN_TRUE;
 }
 
-static int64_t to_signed(uint64_t value, int size)
+static int64_t to_signed(
+	uint64_t value,
+	int size)
 {
 	int64_t result;
 	switch (size)
@@ -337,10 +405,81 @@ static int64_t to_signed(uint64_t value, int size)
 	return result;
 }
 
+static uint64_t truncate_to_size(
+	uint64_t value,
+	int size)
+{
+	uint64_t result;
+	switch (size)
+	{
+		case 8: result = value & 0xff; break;
+		case 16: result = value & 0xffff; break;
+		case 32: result = value & 0xffffffff; break;
+		default: result = value; break;
+	}
+	
+	return result;
+}
+
 static void linux_context_to_zydis_context(
 	const ucontext_t* source,
 	ZydisRegisterContext* destination)
 {
+	destination->values[ZYDIS_REGISTER_AL] = source->uc_mcontext.gregs[REG_RAX] & 0xff;
+	destination->values[ZYDIS_REGISTER_CL] = source->uc_mcontext.gregs[REG_RCX] & 0xff;
+	destination->values[ZYDIS_REGISTER_DL] = source->uc_mcontext.gregs[REG_RDX] & 0xff;
+	destination->values[ZYDIS_REGISTER_BL] = source->uc_mcontext.gregs[REG_RBX] & 0xff;
+	destination->values[ZYDIS_REGISTER_BL] = source->uc_mcontext.gregs[REG_RBP] & 0xff;
+	destination->values[ZYDIS_REGISTER_DL] = source->uc_mcontext.gregs[REG_RDI] & 0xff;
+	destination->values[ZYDIS_REGISTER_AH] = (source->uc_mcontext.gregs[REG_RAX] >> 8) & 0xff;
+	destination->values[ZYDIS_REGISTER_CH] = (source->uc_mcontext.gregs[REG_RCX] >> 8) & 0xff;
+	destination->values[ZYDIS_REGISTER_DH] = (source->uc_mcontext.gregs[REG_RDX] >> 8) & 0xff;
+	destination->values[ZYDIS_REGISTER_BH] = (source->uc_mcontext.gregs[REG_RBX] >> 8) & 0xff;
+	destination->values[ZYDIS_REGISTER_BH] = (source->uc_mcontext.gregs[REG_RBP] >> 8) & 0xff;
+	destination->values[ZYDIS_REGISTER_DH] = (source->uc_mcontext.gregs[REG_RDI] >> 8) & 0xff;
+	destination->values[ZYDIS_REGISTER_R8B] = source->uc_mcontext.gregs[REG_R8] & 0xff;
+	destination->values[ZYDIS_REGISTER_R9B] = source->uc_mcontext.gregs[REG_R9] & 0xff;
+	destination->values[ZYDIS_REGISTER_R10B] = source->uc_mcontext.gregs[REG_R10] & 0xff;
+	destination->values[ZYDIS_REGISTER_R11B] = source->uc_mcontext.gregs[REG_R11] & 0xff;
+	destination->values[ZYDIS_REGISTER_R12B] = source->uc_mcontext.gregs[REG_R12] & 0xff;
+	destination->values[ZYDIS_REGISTER_R13B] = source->uc_mcontext.gregs[REG_R13] & 0xff;
+	destination->values[ZYDIS_REGISTER_R14B] = source->uc_mcontext.gregs[REG_R14] & 0xff;
+	destination->values[ZYDIS_REGISTER_R15B] = source->uc_mcontext.gregs[REG_R15] & 0xff;
+	
+	destination->values[ZYDIS_REGISTER_AX] = source->uc_mcontext.gregs[REG_RAX] & 0xffff;
+	destination->values[ZYDIS_REGISTER_CX] = source->uc_mcontext.gregs[REG_RCX] & 0xffff;
+	destination->values[ZYDIS_REGISTER_DX] = source->uc_mcontext.gregs[REG_RDX] & 0xffff;
+	destination->values[ZYDIS_REGISTER_BX] = source->uc_mcontext.gregs[REG_RBX] & 0xffff;
+	destination->values[ZYDIS_REGISTER_SP] = source->uc_mcontext.gregs[REG_RSP] & 0xffff;
+	destination->values[ZYDIS_REGISTER_BP] = source->uc_mcontext.gregs[REG_RBP] & 0xffff;
+	destination->values[ZYDIS_REGISTER_SI] = source->uc_mcontext.gregs[REG_RSI] & 0xffff;
+	destination->values[ZYDIS_REGISTER_DI] = source->uc_mcontext.gregs[REG_RDI] & 0xffff;
+	destination->values[ZYDIS_REGISTER_R8W] = source->uc_mcontext.gregs[REG_R8] & 0xffff;
+	destination->values[ZYDIS_REGISTER_R9W] = source->uc_mcontext.gregs[REG_R9] & 0xffff;
+	destination->values[ZYDIS_REGISTER_R10W] = source->uc_mcontext.gregs[REG_R10] & 0xffff;
+	destination->values[ZYDIS_REGISTER_R11W] = source->uc_mcontext.gregs[REG_R11] & 0xffff;
+	destination->values[ZYDIS_REGISTER_R12W] = source->uc_mcontext.gregs[REG_R12] & 0xffff;
+	destination->values[ZYDIS_REGISTER_R13W] = source->uc_mcontext.gregs[REG_R13] & 0xffff;
+	destination->values[ZYDIS_REGISTER_R14W] = source->uc_mcontext.gregs[REG_R14] & 0xffff;
+	destination->values[ZYDIS_REGISTER_R15W] = source->uc_mcontext.gregs[REG_R15] & 0xffff;
+	
+	destination->values[ZYDIS_REGISTER_EAX] = source->uc_mcontext.gregs[REG_RAX] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_ECX] = source->uc_mcontext.gregs[REG_RCX] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_EDX] = source->uc_mcontext.gregs[REG_RDX] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_EBX] = source->uc_mcontext.gregs[REG_RBX] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_ESP] = source->uc_mcontext.gregs[REG_RSP] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_EBP] = source->uc_mcontext.gregs[REG_RBP] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_ESI] = source->uc_mcontext.gregs[REG_RSI] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_EDI] = source->uc_mcontext.gregs[REG_RDI] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_R8D] = source->uc_mcontext.gregs[REG_R8] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_R9D] = source->uc_mcontext.gregs[REG_R9] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_R10D] = source->uc_mcontext.gregs[REG_R10] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_R11D] = source->uc_mcontext.gregs[REG_R11] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_R12D] = source->uc_mcontext.gregs[REG_R12] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_R13D] = source->uc_mcontext.gregs[REG_R13] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_R14D] = source->uc_mcontext.gregs[REG_R14] & 0xffffffff;
+	destination->values[ZYDIS_REGISTER_R15D] = source->uc_mcontext.gregs[REG_R15] & 0xffffffff;
+	
 	destination->values[ZYDIS_REGISTER_RAX] = source->uc_mcontext.gregs[REG_RAX];
 	destination->values[ZYDIS_REGISTER_RCX] = source->uc_mcontext.gregs[REG_RCX];
 	destination->values[ZYDIS_REGISTER_RDX] = source->uc_mcontext.gregs[REG_RDX];
