@@ -306,62 +306,62 @@ static void run_test(
 	} \
 	static void run_test_body_##name()
 
-#define ASMV asm volatile
+#define A asm volatile
 
 // *****************************************************************************
 // Instructions (A-L)
 // *****************************************************************************
 
-X86_WTS(ADC_Imm8ToMem8) { ASMV("adcb $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(ADC_Imm8ToMem16) { ASMV("adcw $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTR(ADC_Imm8ToMem32) { ASMV("adcl $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADC_Imm8ToMem8) { A("adcb $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADC_Imm8ToMem16) { A("adcw $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADC_Imm8ToMem32) { A("adcl $123, (%0)" :: "r" (s_buffer) : "memory"); }
 
-X86_WTR(ADC_Imm8ToMem64) { ASMV("adcq $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(ADC_Imm16ToMem16) { ASMV("adcw $12345, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(ADC_Imm32ToMem32) { ASMV("adcl $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTR(ADC_Imm32ToMem64) { ASMV("adcq $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(ADC_Reg8ToMem8) { ASMV("movb $123, %%al\n adcb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
-X86_WTS(ADC_Reg16ToMem16) { ASMV("movw $12345, %%ax\n adcw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
-X86_WTS(ADC_Reg32ToMem32) { ASMV("movl $1234567890, %%eax\n adcl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
-X86_WTS(ADC_Reg64ToMem64) { ASMV("movq $12345678901234567890, %%rax\n adcq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
+X86_WTR(ADC_Imm8ToMem64) { A("adcq $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADC_Imm16ToMem16) { A("adcw $12345, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADC_Imm32ToMem32) { A("adcl $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADC_Imm32ToMem64) { A("adcq $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADC_Reg8ToMem8) { A("movb $123, %%al\n adcb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
+X86_WTS(ADC_Reg16ToMem16) { A("movw $12345, %%ax\n adcw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
+X86_WTS(ADC_Reg32ToMem32) { A("movl $1234567890, %%eax\n adcl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
+X86_WTS(ADC_Reg64ToMem64) { A("movq $12345678901234567890, %%rax\n adcq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
 
-X86_WTS(ADD_Imm8ToMem8) { ASMV("addb $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(ADD_Imm8ToMem16) { ASMV("addw $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTR(ADD_Imm8ToMem32) { ASMV("addl $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTR(ADD_Imm8ToMem64) { ASMV("addq $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(ADD_Imm16ToMem16) { ASMV("addw $12345, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(ADD_Imm32ToMem32) { ASMV("addl $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTR(ADD_Imm32ToMem64) { ASMV("addq $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(ADD_Reg8ToMem8) { ASMV("movb $123, %%al\n addb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
-X86_WTS(ADD_Reg16ToMem16) { ASMV("movw $12345, %%ax\n addw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
-X86_WTS(ADD_Reg32ToMem32) { ASMV("movl $1234567890, %%eax\n addl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
-X86_WTS(ADD_Reg64ToMem64) { ASMV("movq $12345678901234567890, %%rax\n addq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
+X86_WTS(ADD_Imm8ToMem8) { A("addb $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADD_Imm8ToMem16) { A("addw $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADD_Imm8ToMem32) { A("addl $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADD_Imm8ToMem64) { A("addq $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADD_Imm16ToMem16) { A("addw $12345, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADD_Imm32ToMem32) { A("addl $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTR(ADD_Imm32ToMem64) { A("addq $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(ADD_Reg8ToMem8) { A("movb $123, %%al\n addb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
+X86_WTS(ADD_Reg16ToMem16) { A("movw $12345, %%ax\n addw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
+X86_WTS(ADD_Reg32ToMem32) { A("movl $1234567890, %%eax\n addl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
+X86_WTS(ADD_Reg64ToMem64) { A("movq $12345678901234567890, %%rax\n addq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
 
-X86_WTS(AND_Imm8ToMem8) { ASMV("andb $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(AND_Imm8ToMem16) { ASMV("andw $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(AND_Imm8ToMem32) { ASMV("andl $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(AND_Imm8ToMem64) { ASMV("andq $123, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(AND_Imm16ToMem16) { ASMV("andw $1234, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(AND_Imm32ToMem32) { ASMV("andl $123456, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(AND_Imm32ToMem64) { ASMV("andq $123456, (%0)" :: "r" (s_buffer) : "memory"); }
-X86_WTS(AND_Reg8ToMem8) { ASMV("movb $123, %%al\n andb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
-X86_WTS(AND_Reg16ToMem16) { ASMV("movw $123, %%ax\n andw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
-X86_WTS(AND_Reg32ToMem32) { ASMV("movl $123, %%eax\n andl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
-X86_WTS(AND_Reg64ToMem64) { ASMV("movq $123, %%rax\n andq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
+X86_WTS(AND_Imm8ToMem8) { A("andb $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm8ToMem16) { A("andw $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm8ToMem32) { A("andl $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm8ToMem64) { A("andq $123, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm16ToMem16) { A("andw $1234, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm32ToMem32) { A("andl $123456, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Imm32ToMem64) { A("andq $123456, (%0)" :: "r" (s_buffer) : "memory"); }
+X86_WTS(AND_Reg8ToMem8) { A("movb $123, %%al\n andb %%al, (%0)" :: "r" (s_buffer) : "al", "memory"); }
+X86_WTS(AND_Reg16ToMem16) { A("movw $123, %%ax\n andw %%ax, (%0)" :: "r" (s_buffer) : "ax", "memory"); }
+X86_WTS(AND_Reg32ToMem32) { A("movl $123, %%eax\n andl %%eax, (%0)" :: "r" (s_buffer) : "eax", "memory"); }
+X86_WTS(AND_Reg64ToMem64) { A("movq $123, %%rax\n andq %%rax, (%0)" :: "r" (s_buffer) : "rax", "memory"); }
 
 #define X86_WTS_BTC_SMALL(name, bit_offset) \
 	X86_WTS(BTC_##name##_Reg16ToMem16) \
-		{ ASMV("movw $" #bit_offset ", %%ax\n btcw %%ax, (%0)" :: "r" (s_buffer + 32) : "ax", "memory"); } \
+		{ A("movw $" #bit_offset ", %%ax\n btcw %%ax, (%0)" :: "r" (s_buffer + 32) : "ax", "memory"); } \
 	X86_WTS(BTC_##name##_Reg32ToMem32) \
-		{ ASMV("movl $" #bit_offset ", %%eax\n btcl %%eax, (%0)" :: "r" (s_buffer + 32) : "eax", "memory"); } \
+		{ A("movl $" #bit_offset ", %%eax\n btcl %%eax, (%0)" :: "r" (s_buffer + 32) : "eax", "memory"); } \
 	X86_WTS(BTC_##name##_Reg64ToMem64) \
-		{ ASMV("movq $" #bit_offset ", %%rax\n btcq %%rax, (%0)" :: "r" (s_buffer + 32) : "rax", "memory"); } \
+		{ A("movq $" #bit_offset ", %%rax\n btcq %%rax, (%0)" :: "r" (s_buffer + 32) : "rax", "memory"); } \
 	X86_WTS(BTC_##name##_Imm8ToMem16) \
-		{ ASMV("btcw $" #bit_offset ", (%0)" :: "r" (s_buffer + 32) : "memory"); } \
+		{ A("btcw $" #bit_offset ", (%0)" :: "r" (s_buffer + 32) : "memory"); } \
 	X86_WTS(BTC_##name##_Imm8ToMem32) \
-		{ ASMV("btcl $" #bit_offset ", (%0)" :: "r" (s_buffer + 32) : "memory"); } \
+		{ A("btcl $" #bit_offset ", (%0)" :: "r" (s_buffer + 32) : "memory"); } \
 	X86_WTS(BTC_##name##_Imm8ToMem64) \
-		{ ASMV("btcq $" #bit_offset ", (%0)" :: "r" (s_buffer + 32) : "memory"); }
+		{ A("btcq $" #bit_offset ", (%0)" :: "r" (s_buffer + 32) : "memory"); }
 X86_WTS_BTC_SMALL(Zero, 0)
 X86_WTS_BTC_SMALL(Positive4, 4)
 X86_WTS_BTC_SMALL(Positive64, 64)
@@ -373,16 +373,16 @@ X86_WTS_BTC_SMALL(Negative123, -123)
 X86_WTS_BTC_SMALL(Negative128, -128)
 #define X86_WTS_BTC_LARGE64(name, bit_offset) \
 	X86_WTS(BTC_##name##_Reg64ToMem64) \
-		{ ASMV("movq $" #bit_offset ", %%rax\n btcq %%rax, (%0)" \
+		{ A("movq $" #bit_offset ", %%rax\n btcq %%rax, (%0)" \
 			:: "r" ((s_buffer + 32) - (bit_offset / 8)) : "rax", "memory"); }
 #define X86_WTS_BTC_LARGE32(name, bit_offset) \
 	X86_WTS(BTC_##name##_Reg32ToMem32) \
-		{ ASMV("movl $" #bit_offset ", %%eax\n btcl %%eax, (%0)" \
+		{ A("movl $" #bit_offset ", %%eax\n btcl %%eax, (%0)" \
 			:: "r" ((s_buffer + 32) - (bit_offset / 8)) : "eax", "memory"); } \
 		X86_WTS_BTC_LARGE64(name, bit_offset)
 #define X86_WTS_BTC_LARGE16(name, bit_offset) \
 	X86_WTS(BTC_##name##_Reg16ToMem16) \
-		{ ASMV("movw $" #bit_offset ", %%ax\n btcw %%ax, (%0)" \
+		{ A("movw $" #bit_offset ", %%ax\n btcw %%ax, (%0)" \
 			:: "r" ((s_buffer + 32) - (bit_offset / 8)) : "ax", "memory"); } \
 		X86_WTS_BTC_LARGE32(name, bit_offset)
 X86_WTS_BTC_LARGE16(MaxSigned16, 32767);
@@ -391,37 +391,45 @@ X86_WTS_BTC_LARGE32(MaxSigned32, 2147483647);
 
 // NOTE: Assume BTR and BTS behave similarly.
 
-X86_WTS(CMPXCHG_Exchange8) { ASMV("movb $0xbb, %%al\n movb $123, %%bl\n cmpxchgb %%bl, %0"
-	: "+m" (s_buffer) :: "al", "bl", "memory"); }
-X86_WTS(CMPXCHG_Exchange16) { ASMV("movw $0xbbbb, %%ax\n movw $123, %%bx\n cmpxchgw %%bx, %0"
-	: "+m" (s_buffer) :: "ax", "bx", "memory"); }
-X86_WTS(CMPXCHG_Exchange32) { ASMV("movl $0xbbbbbbbb, %%eax\n movl $123, %%ebx\n cmpxchgl %%ebx, %0"
-	: "+m" (s_buffer) :: "eax", "ebx", "memory"); }
-X86_WTS(CMPXCHG_Exchange64) { ASMV("movq $0xbbbbbbbbbbbbbbbb, %%rax\n movq $123, %%rbx\n cmpxchgq %%rbx, %0"
-	: "+m" (s_buffer) :: "rax", "rbx", "memory"); }
-X86_WTS(CMPXCHG_DontExchange8) { ASMV("movb $123, %%al\n movb $123, %%bl\n cmpxchgb %%bl, %0"
-	: "+m" (s_buffer) :: "al", "bl", "memory"); }
-X86_WTS(CMPXCHG_DontExchange16) { ASMV("movw $123, %%ax\n movw $123, %%bx\n cmpxchgw %%bx, %0"
-	: "+m" (s_buffer) :: "ax", "bx", "memory"); }
-X86_WTS(CMPXCHG_DontExchange32) { ASMV("movl $123, %%eax\n movl $123, %%ebx\n cmpxchgl %%ebx, %0"
-	: "+m" (s_buffer) :: "eax", "ebx", "memory"); }
-X86_WTS(CMPXCHG_DontExchange64) { ASMV("movq $123, %%rax\n movq $123, %%rbx\n cmpxchgq %%rbx, %0"
-	: "+m" (s_buffer) :: "rax", "rbx", "memory"); }
+X86_WTS(CMPXCHG_Exchange8)
+	{ A("movb $0xbb, %%al\n movb $123, %%bl\n cmpxchgb %%bl, %0"
+		: "+m" (s_buffer) :: "al", "bl", "memory"); }
+X86_WTS(CMPXCHG_Exchange16)
+	{ A("movw $0xbbbb, %%ax\n movw $123, %%bx\n cmpxchgw %%bx, %0"
+		: "+m" (s_buffer) :: "ax", "bx", "memory"); }
+X86_WTS(CMPXCHG_Exchange32)
+	{ A("movl $0xbbbbbbbb, %%eax\n movl $123, %%ebx\n cmpxchgl %%ebx, %0"
+		: "+m" (s_buffer) :: "eax", "ebx", "memory"); }
+X86_WTS(CMPXCHG_Exchange64)
+	{ A("movq $0xbbbbbbbbbbbbbbbb, %%rax\n movq $123, %%rbx\n cmpxchgq %%rbx, %0"
+		: "+m" (s_buffer) :: "rax", "rbx", "memory"); }
+X86_WTS(CMPXCHG_DontExchange8)
+	{ A("movb $123, %%al\n movb $123, %%bl\n cmpxchgb %%bl, %0"
+		: "+m" (s_buffer) :: "al", "bl", "memory"); }
+X86_WTS(CMPXCHG_DontExchange16)
+	{ A("movw $123, %%ax\n movw $123, %%bx\n cmpxchgw %%bx, %0"
+		: "+m" (s_buffer) :: "ax", "bx", "memory"); }
+X86_WTS(CMPXCHG_DontExchange32)
+	{ A("movl $123, %%eax\n movl $123, %%ebx\n cmpxchgl %%ebx, %0"
+		: "+m" (s_buffer) :: "eax", "ebx", "memory"); }
+X86_WTS(CMPXCHG_DontExchange64)
+	{ A("movq $123, %%rax\n movq $123, %%rbx\n cmpxchgq %%rbx, %0"
+		: "+m" (s_buffer) :: "rax", "rbx", "memory"); }
 
 X86_WTS(CMPXCHG8B_Exchange)
-	{ ASMV("movl $0xbbbbbbbb, %%edx\n movl $0xbbbbbbbb, %%eax\n\n"
+	{ A("movl $0xbbbbbbbb, %%edx\n movl $0xbbbbbbbb, %%eax\n\n"
 		"movl $123, %%ecx\n movl $123, %%ebx\n"
 		"cmpxchg8b %0" : "+m" (s_buffer) :: "eax", "ebx", "ecx", "edx", "memory"); }
 X86_WTS(CMPXCHG8B_DontExchange)
-	{ ASMV("movl $123, %%edx\n movl $123, %%eax\n\n"
+	{ A("movl $123, %%edx\n movl $123, %%eax\n\n"
 		"movl $123, %%ecx\n movl $123, %%ebx\n"
 		"cmpxchg8b %0" : "+m" (s_buffer) :: "eax", "ebx", "ecx", "edx", "memory"); }
 X86_WTS(CMPXCHG16B_Exchange)
-	{ ASMV("movq $0xbbbbbbbbbbbbbbbb, %%rdx\n movq $0xbbbbbbbbbbbbbbbb, %%rax\n"
+	{ A("movq $0xbbbbbbbbbbbbbbbb, %%rdx\n movq $0xbbbbbbbbbbbbbbbb, %%rax\n"
 		"movq $123, %%rcx\n movq $123, %%rbx\n"
 		"cmpxchg16b %0" : "+m" (s_buffer) :: "rax", "rbx", "rcx", "rdx", "memory"); }
 X86_WTS(CMPXCHG16B_DontExchange)
-	{ ASMV("movq $123, %%rdx\n movq $123, %%rax\n"
+	{ A("movq $123, %%rdx\n movq $123, %%rax\n"
 		"movq $123, %%rcx\n movq $123, %%rbx\n"
 		"cmpxchg16b %0" : "+m" (s_buffer) :: "rax", "rbx", "rcx", "rdx", "memory"); }
 
