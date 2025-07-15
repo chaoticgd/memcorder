@@ -115,6 +115,8 @@ static MemcorderStatus handle_special_cases(
 	switch (instruction->mnemonic)
 	{
 		case ZYDIS_MNEMONIC_BTC:
+		case ZYDIS_MNEMONIC_BTR:
+		case ZYDIS_MNEMONIC_BTS:
 		{
 			assert(instruction->operand_count >= 2);
 			const ZydisDecodedOperand* bit_base_operand = &operands[0];
@@ -142,6 +144,7 @@ static MemcorderStatus handle_special_cases(
 			{
 				case ZYDIS_OPERAND_TYPE_REGISTER:
 				{
+					// TODO: Fix this.
 					switch (bit_base_operand->size)
 					{
 						case 16: bit_offset = bit_offset % 32768; break;

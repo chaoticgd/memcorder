@@ -387,4 +387,6 @@ X86_WTS_BTC_LARGE16(MaxSigned16, 32767);
 X86_WTS_BTC_LARGE32(MaxSigned32, 2147483647);
 // TODO: Test some more out of range values here. Minimums don't work right.
 
+// NOTE: Assume BTR and BTS behave similarly.
+
 #endif
