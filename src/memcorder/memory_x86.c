@@ -126,6 +126,7 @@ static MemcorderStatus handle_special_instructions(
 {
 	switch (instruction->mnemonic)
 	{
+		case ZYDIS_MNEMONIC_BT:
 		case ZYDIS_MNEMONIC_BTC:
 		case ZYDIS_MNEMONIC_BTR:
 		case ZYDIS_MNEMONIC_BTS:
@@ -195,7 +196,7 @@ static MemcorderStatus handle_special_instructions(
 				access->type = MEMCORDER_MEMORY_ACCESS_TYPE_WRITE;
 			}
 			
-			if (types & MEMCORDER_MEMORY_ACCESS_TYPE_WRITE)
+			if ((types & MEMCORDER_MEMORY_ACCESS_TYPE_WRITE) && instruction->mnemonic != ZYDIS_MNEMONIC_BT)
 			{
 				MemcorderMemoryAccess* access = &output_accesses[(*output_access_count)++];
 				if (bit_offset < 0 && (bit_offset % 8) != 0)
