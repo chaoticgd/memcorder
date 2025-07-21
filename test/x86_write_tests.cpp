@@ -22,7 +22,7 @@
 
 #include <immintrin.h>
 
-#define BUFFER_SIZE 64
+#define BUFFER_SIZE 512
 
 // The main buffer, which will be written to directly.
 static unsigned char s_buffer[BUFFER_SIZE];
@@ -34,11 +34,7 @@ static MemcorderMemoryAccess s_accesses[MEMCORDER_MAX_MEMORY_ACCESSES_PER_INSTRU
 static size_t s_access_count = 0;
 
 // Whether or not to treat 0xBBs being copied to the mirror buffer a failure.
-static bool s_relaxed = false;
-
-// Disables a check for relaxed tests that makes them failed if they could be
-// strict tests.
-static bool s_arbitrary = false;
+static bool s_strict = true;
 
 static void handle_sigtrap(
 	int sig,
@@ -131,10 +127,7 @@ static void set_eflags_trap_bit(
 
 static bool compare_buffers()
 {
-	bool result = true;
-	bool would_have_failed_if_strict = false;
-	
-	for (unsigned int i = 0; i < BUFFER_SIZE; i++)
+	for (int i = 0; i < BUFFER_SIZE; i++)
 	{
 		if (s_buffer[i] == s_mirror[i])
 		{
@@ -144,20 +137,13 @@ static bool compare_buffers()
 				// could just be that the instruction being tested couldn't
 				// modify all the output bytes to be different to the input.
 				
-				if (s_relaxed)
-				{
-					would_have_failed_if_strict = true;
-					continue;
-				}
-				else
-				{
-					result = false;
-				}
+				if (s_strict)
+					return false;
 			}
 		}
 		else if (s_buffer[i] != 0xbb || s_mirror[i] != 0xdd)
 		{
-			result = false;
+			return false;
 		}
 		else
 		{
@@ -165,12 +151,16 @@ static bool compare_buffers()
 		}
 	}
 	
-	// If the s_relaxed test flag wasn't required for the test to pass, it
-	// should've been made a strict test instead. That means there's something
-	// going on that should be investigated.
-	EXPECT_TRUE(!s_relaxed || s_arbitrary || would_have_failed_if_strict);
+	return true;
+}
+
+static int last_byte_written()
+{
+	for (int i = BUFFER_SIZE - 1; i >= 0; i--)
+		if (s_buffer[i] != 0xbb || s_mirror[i] != 0xdd)
+			return i;
 	
-	return result;
+	return -1;
 }
 
 static void print_diff_row(
@@ -203,11 +193,18 @@ static void print_diff_row(
 
 static void print_diff()
 {
+	int size;
+	int last_byte = last_byte_written();
+	if (last_byte != -1)
+		size = MEMCORDER_ALIGN(last_byte + 1, 0x10);
+	else
+		size = 0x10;
+	
 	fprintf(stderr, "         "
 		"   0  1  2  3   4  5  6  7   8  9  a  b   c  d  e  f  |"
 		"   0  1  2  3   4  5  6  7   8  9  a  b   c  d  e  f\n");
 	
-	for (unsigned int i = 0; i < BUFFER_SIZE; i += 0x10)
+	for (int i = 0; i < size; i += 0x10)
 	{
 		fprintf(stderr, "%8x:", i);
 		print_diff_row(s_buffer, s_mirror, i);
@@ -297,8 +294,7 @@ static void run_test(
 	static void run_test_body_##name(); \
 	TEST(X86Write, name) \
 	{ \
-		s_relaxed = false; \
-		s_arbitrary = false; \
+		s_strict = true; \
 		run_test(run_test_body_##name); \
 	} \
 	static void run_test_body_##name()
@@ -310,22 +306,7 @@ static void run_test(
 	static void run_test_body_##name(); \
 	TEST(X86Write, name) \
 	{ \
-		s_relaxed = true; \
-		s_arbitrary = false; \
-		run_test(run_test_body_##name); \
-	} \
-	static void run_test_body_##name()
-
-// Arbitrary write test. Use this if you've got a test that runs arbitrary
-// instructions that write to the trace buffer e.g. a library function. Compared
-// to X86_WTR, this disables a check that would make sure the test as compiled
-// couldn't be run as a strict test instead.
-#define X86_WTA(name) \
-	static void run_test_body_##name(); \
-	TEST(X86Write, name) \
-	{ \
-		s_relaxed = true; \
-		s_arbitrary = true; \
+		s_strict = false; \
 		run_test(run_test_body_##name); \
 	} \
 	static void run_test_body_##name()
@@ -337,141 +318,113 @@ static void run_test(
 #ifdef __MMX__
 #define X86_WTS_MMX(name) X86_WTS(name)
 #define X86_WTR_MMX(name) X86_WTR(name)
-#define X86_WTA_MMX(name) X86_WTA(name)
 #else
 #define X86_WTS_MMX(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_MMX(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_MMX(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __SSE__
 #define X86_WTS_SSE(name) X86_WTS(name)
 #define X86_WTR_SSE(name) X86_WTR(name)
-#define X86_WTA_SSE(name) X86_WTA(name)
 #else
 #define X86_WTS_SSE(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_SSE(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_SSE(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __SSE2__
 #define X86_WTS_SSE2(name) X86_WTS(name)
 #define X86_WTR_SSE2(name) X86_WTR(name)
-#define X86_WTA_SSE2(name) X86_WTA(name)
 #else
 #define X86_WTS_SSE2(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_SSE2(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_SSE2(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __SSE3__
 #define X86_WTS_SSE3(name) X86_WTS(name)
 #define X86_WTR_SSE3(name) X86_WTR(name)
-#define X86_WTA_SSE3(name) X86_WTA(name)
 #else
 #define X86_WTS_SSE3(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_SSE3(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_SSE3(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __SSSE3__
 #define X86_WTS_SSSE3(name) X86_WTS(name)
 #define X86_WTR_SSSE3(name) X86_WTR(name)
-#define X86_WTA_SSSE3(name) X86_WTA(name)
 #else
 #define X86_WTS_SSSE3(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_SSSE3(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_SSSE3(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __SSE4_1__
 #define X86_WTS_SSE41(name) X86_WTS(name)
 #define X86_WTR_SSE41(name) X86_WTR(name)
-#define X86_WTA_SSE41(name) X86_WTA(name)
 #else
 #define X86_WTS_SSE41(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_SSE41(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_SSE41(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __SSE4_2__
 #define X86_WTS_SSE42(name) X86_WTS(name)
 #define X86_WTR_SSE42(name) X86_WTR(name)
-#define X86_WTA_SSE42(name) X86_WTA(name)
 #else
 #define X86_WTS_SSE42(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_SSE42(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_SSE42(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __AVX__
 #define X86_WTS_AVX(name) X86_WTS(name)
 #define X86_WTR_AVX(name) X86_WTR(name)
-#define X86_WTA_AVX(name) X86_WTA(name)
 #else
 #define X86_WTS_AVX(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_AVX(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_AVX(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __AVX2__
 #define X86_WTS_AVX2(name) X86_WTS(name)
 #define X86_WTR_AVX2(name) X86_WTR(name)
-#define X86_WTA_AVX2(name) X86_WTA(name)
 #else
 #define X86_WTS_AVX2(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_AVX2(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_AVX2(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __AVX512CD__
 #define X86_WTS_AVX512CD(name) X86_WTS(name)
 #define X86_WTR_AVX512CD(name) X86_WTR(name)
-#define X86_WTA_AVX512CD(name) X86_WTA(name)
 #else
 #define X86_WTS_AVX512CD(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_AVX512CD(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_AVX512CD(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __AVX512ER__
 #define X86_WTS_AVX512ER(name) X86_WTS(name)
 #define X86_WTR_AVX512ER(name) X86_WTR(name)
-#define X86_WTA_AVX512ER(name) X86_WTA(name)
 #else
 #define X86_WTS_AVX512ER(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_AVX512ER(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_AVX512ER(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __AVX512F__
 #define X86_WTS_AVX512F(name) X86_WTS(name)
 #define X86_WTR_AVX512F(name) X86_WTR(name)
-#define X86_WTA_AVX512F(name) X86_WTA(name)
 #else
 #define X86_WTS_AVX512F(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_AVX512F(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_AVX512F(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __AVX512PF__
 #define X86_WTS_AVX512PF(name) X86_WTS(name)
 #define X86_WTR_AVX512PF(name) X86_WTR(name)
-#define X86_WTA_AVX512PF(name) X86_WTA(name)
 #else
 #define X86_WTS_AVX512PF(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_AVX512PF(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_AVX512PF(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #ifdef __AVX512VL__
 #define X86_WTS_AVX512VL(name) X86_WTS(name)
 #define X86_WTR_AVX512VL(name) X86_WTR(name)
-#define X86_WTA_AVX512VL(name) X86_WTA(name)
 #else
 #define X86_WTS_AVX512VL(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #define X86_WTR_AVX512VL(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
-#define X86_WTA_AVX512VL(name) template <typename T> [[maybe_unused]] static void stub_test_body_##name()
 #endif
 
 #define A asm volatile
@@ -483,7 +436,6 @@ static void run_test(
 X86_WTS(ADC_Imm8ToMem8) { A("adcb $123, (%0)" :: "r" (s_buffer) : "memory"); }
 X86_WTS(ADC_Imm8ToMem16) { A("adcw $123, (%0)" :: "r" (s_buffer) : "memory"); }
 X86_WTR(ADC_Imm8ToMem32) { A("adcl $123, (%0)" :: "r" (s_buffer) : "memory"); }
-
 X86_WTR(ADC_Imm8ToMem64) { A("adcq $123, (%0)" :: "r" (s_buffer) : "memory"); }
 X86_WTS(ADC_Imm16ToMem16) { A("adcw $12345, (%0)" :: "r" (s_buffer) : "memory"); }
 X86_WTS(ADC_Imm32ToMem32) { A("adcl $1234567890, (%0)" :: "r" (s_buffer) : "memory"); }
@@ -602,7 +554,48 @@ X86_WTS(CMPXCHG16B_DontExchange)
 		"movq $123, %%rcx\n movq $123, %%rbx\n"
 		"cmpxchg16b %0" : "+m" (s_buffer) :: "rax", "rbx", "rcx", "rdx", "memory"); }
 
-X86_WTS_SSE41(EXTRACTPS) { A("extractps $1, %1, %0" : "+m"(s_buffer) : "x" (s_one_two_three_four)); }
-X86_WTS_AVX(VEXTRACTPS) { A("vextractps $1, %1, %0" : "+m"(s_buffer) : "x" (s_one_two_three_four)); }
+X86_WTS(DEC_Mem8) { A("decb %0" : "+m" (s_buffer)); }
+X86_WTR(DEC_Mem16) { A("decw %0" : "+m" (s_buffer)); }
+X86_WTR(DEC_Mem32) { A("decl %0" : "+m" (s_buffer)); }
+X86_WTR(DEC_Mem64) { A("decq %0" : "+m" (s_buffer)); }
+
+X86_WTS_SSE41(EXTRACTPS) { A("extractps $1, %1, %0" : "+m" (s_buffer) : "x" (s_one_two_three_four)); }
+X86_WTS_AVX(VEXTRACTPS) { A("vextractps $1, %1, %0" : "+m" (s_buffer) : "x" (s_one_two_three_four)); }
+
+X86_WTS(FBSTP) { A("fldpi\n fbstp %0" : "+m" (s_buffer)); }
+
+X86_WTS(FIST_Short) { A("fldpi\n fists %0" : "+m" (s_buffer)); }
+X86_WTS(FIST_Long) { A("fldpi\n fistl %0" : "+m" (s_buffer)); }
+
+X86_WTS(FIST_RegToMem16) { A("fldpi\n fists %0" : "+m" (s_buffer)); }
+X86_WTS(FIST_RegToMem32) { A("fldpi\n fistl %0" : "+m" (s_buffer)); }
+X86_WTS(FISTP_RegToMem16) { A("fldpi\n fistps %0" : "+m" (s_buffer)); }
+X86_WTS(FISTP_RegToMem32) { A("fldpi\n fistpl %0" : "+m" (s_buffer)); }
+X86_WTS(FISTP_RegToMem64) { A("fldpi\n fistpq %0" : "+m" (s_buffer)); }
+
+X86_WTS_SSE3(FISTTP_RegToMem16) { A("fldpi\n fisttps %0" : "+m" (s_buffer)); }
+X86_WTS_SSE3(FISTTP_RegToMem32) { A("fldpi\n fisttpl %0" : "+m" (s_buffer)); }
+X86_WTS_SSE3(FISTTP_RegToMem64) { A("fldpi\n fisttpq %0" : "+m" (s_buffer)); }
+
+X86_WTR(FSAVE) { A("fsave %0" : "=m" (s_buffer)); }
+X86_WTR(FNSAVE) { A("fnsave %0" : "=m" (s_buffer)); }
+
+X86_WTS(FST_RegToMem32) { A("fldpi\n fsts %0" : "=m" (s_buffer)); }
+X86_WTS(FST_RegToMem64) { A("fldpi\n fstl %0" : "=m" (s_buffer)); }
+X86_WTS(FSTP_RegToMem32) { A("fldpi\n fstps %0" : "=m" (s_buffer)); }
+X86_WTS(FSTP_RegToMem64) { A("fldpi\n fstpl %0" : "=m" (s_buffer)); }
+X86_WTS(FSTP_RegToMem80) { A("fldpi\n fstpt %0" : "=m" (s_buffer)); }
+
+X86_WTR(FSTCW) { A("fstcw %0" : "=m" (s_buffer)); }
+X86_WTR(FNSTCW) { A("fnstcw %0" : "=m" (s_buffer)); }
+
+X86_WTR(FSTENV) { A("fstenv %0" : "=m" (s_buffer)); }
+X86_WTR(FNSTENV) { A("fnstenv %0" : "=m" (s_buffer)); }
+
+X86_WTR(FSTSW) { A("fstsw %0" : "=m" (s_buffer)); }
+X86_WTR(FNSTSW) { A("fnstsw %0" : "=m" (s_buffer)); }
+
+X86_WTR(FXSAVE) { A("fxsave %0" : "=m" (s_buffer)); }
+X86_WTR(FXSAVE64) { A("fxsave64 %0" : "=m" (s_buffer)); }
 
 #endif

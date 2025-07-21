@@ -51,6 +51,8 @@ typedef enum {
 
 const char* memcorder_status_string(MemcorderStatus status);
 
+#define MEMCORDER_ALIGN(value, alignment) ((value) + (-(value) & ((alignment) - 1)))
+
 #ifdef __cplusplus
 }
 #endif

@@ -288,6 +288,52 @@ static MemcorderStatus handle_special_instructions(
 			
 			break;
 		}
+		case ZYDIS_MNEMONIC_FXRSTOR:
+		case ZYDIS_MNEMONIC_FXRSTOR64:
+		{
+			// Zydis reports this as a 512 bit read, but the manual says it only
+			// uses 464 bytes at most, so report that instead.
+			
+			assert(instruction->operand_count >= 1);
+			const ZydisDecodedOperand* source_operand = &operands[0];
+			
+			if (types & MEMCORDER_MEMORY_ACCESS_TYPE_READ)
+			{
+				MemcorderMemoryAccess* access = &output_accesses[(*output_access_count)++];
+				access->address = 0;
+				if (calculate_memory_operand_address(
+					instruction, source_operand, runtime_address, platform_context, (uint64_t*) &access->address)
+					!= MEMCORDER_SUCCESS)
+					return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+				access->size = 464;
+				access->type = MEMCORDER_MEMORY_ACCESS_TYPE_READ;
+			}
+			
+			break;
+		}
+		case ZYDIS_MNEMONIC_FXSAVE:
+		case ZYDIS_MNEMONIC_FXSAVE64:
+		{
+			// Zydis reports this as a 512 bit write, but the manual says it's
+			// actually a 464 byte write at most, so report that instead.
+			
+			assert(instruction->operand_count >= 1);
+			const ZydisDecodedOperand* dest_operand = &operands[0];
+			
+			if (types & MEMCORDER_MEMORY_ACCESS_TYPE_WRITE)
+			{
+				MemcorderMemoryAccess* access = &output_accesses[(*output_access_count)++];
+				access->address = 0;
+				if (calculate_memory_operand_address(
+					instruction, dest_operand, runtime_address, platform_context, (uint64_t*) &access->address)
+					!= MEMCORDER_SUCCESS)
+					return MEMCORDER_ADDRESS_CALCULATION_FAILURE;
+				access->size = 464;
+				access->type = MEMCORDER_MEMORY_ACCESS_TYPE_WRITE;
+			}
+			
+			break;
+		}
 		default:
 		{
 			return -1;
