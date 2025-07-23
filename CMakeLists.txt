@@ -47,6 +47,9 @@ target_link_libraries(memcorder Zydis)
 set(gtest_force_shared_crt on)
 add_subdirectory(thirdparty/googletest EXCLUDE_FROM_ALL)
 
+set(BENCHMARK_ENABLE_TESTING off)
+add_subdirectory(thirdparty/benchmark EXCLUDE_FROM_ALL)
+
 add_subdirectory(thirdparty/zydis EXCLUDE_FROM_ALL)
 
 add_executable(tests
